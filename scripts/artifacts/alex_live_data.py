@@ -27,6 +27,21 @@ __artifacts_v2__ = {
         "paths": ('*/extra/dumpsys_*.txt'),
         "output_types": ["html", "lava", "tsv"],
         "artifact_icon": "wifi"
+    },
+    "alex_live_usagestats_events": {
+        "name": "Dumpsys - Usagestats Events",
+        "description": "Outputs the Usagestats \
+            Event entries from the Dumpsys \
+                log of an ALEX PRFS backup.",
+        "author": "@C_Peter",
+        "creation_date": "2026-02-03",
+        "last_update_date": "2026-02-03",
+        "requirements": "none",
+        "category": "ALEX Live Data",
+        "notes": "",
+        "paths": ('*/extra/dumpsys_*.txt'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "list"
     }
 }
 
@@ -78,21 +93,25 @@ def split_dumpsys_log(dumpsys_file) -> dict:
         return
     if not dumpsys_file:
         return
+
     ds_filename = os.path.basename(dumpsys_file)
     try:
         _DEVICE_TIME = int(ds_filename.split('_', 1)[1].split('.', 1)[0])
     except (ValueError, IndexError):
-        logfunc("Dumpsys File does not contain a unix timestamp")   
+        logfunc("Dumpsys File does not contain a unix timestamp")
+
     with open(dumpsys_file, "r", encoding="utf-8", errors="ignore") as f:
         log_txt = f.read()
+
     dumpdict = {}
     start_re = re.compile(r"DUMP OF SERVICE\s+(\S+):")
-    duration_re = re.compile(r"([\d.]+)s\s+was the duration of dumpsys.*ending at:\s+(.+)$")
-    separator_re = re.compile(r"^\s*-{20,}\s*$")
+    duration_re = re.compile(
+        r"([\d.]+)s\s+was the duration of dumpsys.*ending at:\s+(.+)$"
+    )
+
     current_service = None
     current_lines = []
     current_start_ts = None
-    saw_separator = False
 
     def flush():
         if current_service:
@@ -100,19 +119,19 @@ def split_dumpsys_log(dumpsys_file) -> dict:
                 "\n".join(current_lines),
                 current_start_ts
             )
-    lines = log_txt.splitlines()
-    for i, line in enumerate(lines):
+
+    for line in log_txt.splitlines():
         start_match = start_re.search(line)
         if start_match:
-            if current_service:
-                flush()
+            flush()
             current_service = start_match.group(1)
-            current_lines = [line]
+            current_lines = []
             current_start_ts = None
-            saw_separator = False
             continue
+
         if not current_service:
             continue
+
         current_lines.append(line)
 
         dur_match = duration_re.search(line)
@@ -120,26 +139,20 @@ def split_dumpsys_log(dumpsys_file) -> dict:
             duration_s = float(dur_match.group(1))
             end_time = datetime.datetime.strptime(
                 dur_match.group(2).strip(),
-                "%Y-%m-%d %H:%M:%S")
-            current_start_ts = (end_time - datetime.timedelta(seconds=duration_s)).timestamp()
+                "%Y-%m-%d %H:%M:%S"
+            )
+            current_start_ts = (
+                end_time - datetime.timedelta(seconds=duration_s)
+            ).timestamp()
 
-            flush()
-            current_service = None
-            current_lines = []
-            current_start_ts = None
-            saw_separator = False
-            continue
-
-        if separator_re.match(line):
-            saw_separator = True
-        else:
-            saw_separator = False
     flush()
     _DUMPSYS_DICT = dumpdict
+    _PARSED_DUMPSYS = True
 
 # Dumpsys - Wifi - Configured Networks
 @artifact_processor
 def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
+    global _PARSED_DUMPSYS, _DUMPSYS_DICT, _DEVICE_TIME
     source_path = files_found[0]
     data_list = []
     split_dumpsys_log(source_path)
@@ -154,7 +167,7 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
             "bssid": re.compile(r'BSSID:\s*(\S+)'),
             "hidden": re.compile(r'HIDDEN:\s*(\S+)'),
             "creation_millis": re.compile(r'creation millis:\s*(\d+)'),
-            "creation_time": re.compile(r'creationtime=([^\s]+)|creation time=([^\s]+)'),
+            "creation_time": re.compile(r'creationtime=([0-9\-:\.\s]+)|creation time=([0-9\-:\.\s]+)'),
             "randomized_mac": re.compile(r'^\s*[*-]?\s*mRandomizedMacAddress:\s*([0-9a-fA-F:]{17})', re.IGNORECASE),
             "last_connected": re.compile(r'lastConnected:\s*([^\s]+)'),
             "autojoin": re.compile(r'autojoin\s*:\s*(\d+)|allowAutojoin=(true|false)', re.IGNORECASE),
@@ -208,6 +221,8 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
                                 autojoin = int(m.group(1))
                             elif m.group(2) is not None:
                                 autojoin = 1 if m.group(2).lower() == "true" else 0
+                        elif key == "creation_time":
+                            creation_time = m.group(1) or m.group(2)
                         else:
                             value = m.group(1)
                             if key == "ssid":
@@ -229,7 +244,7 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
 
                 if creation_millis:
                     create_time = datetime.datetime.fromtimestamp(int(creation_millis)//1000, tz=datetime.timezone.utc)
-                elif creation_time:
+                elif creation_time and creation_time != None:
                     create_time = datetime.datetime.fromtimestamp(parse_timestamp(creation_time, _DEVICE_TIME), tz=datetime.timezone.utc)
                 if last_connected:
                     last_connected_time = datetime.datetime.fromtimestamp(parse_timestamp(last_connected, _DEVICE_TIME), tz=datetime.timezone.utc)
@@ -241,7 +256,40 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
     data_headers = ('ID', ('Creation Time', 'datetime'), ('Last Connected', 'datetime'), 'SSID', 'BSSID', 'DSBLE', 'Hidden', 'Random MAC', 'Autojoin')
 
     return data_headers, data_list, source_path
-             
+
+# Dumpsys - Usagestats - Events
+@artifact_processor
+def alex_live_usagestats_events(files_found, _report_folder, _seeker, _wrap_text):
+    global _PARSED_DUMPSYS, _DUMPSYS_DICT, _DEVICE_TIME
+    source_path = files_found[0]
+    data_list = []
+    split_dumpsys_log(source_path)
+    us_dump, us_ts = _DUMPSYS_DICT.get("usagestats", (None, None))
+    if us_dump == None:
+        logfunc('Dumpsys does not include a \"usagestats\" part.')
+    else:
+        PAIR_RE = re.compile(r'(\w+)=(".*?"|\S+)')
+        data_list = []
+
+        for line in us_dump.splitlines():
+            stripped = line.strip()
+
+            if not stripped.startswith("time=") or "flags=" not in stripped:
+                continue
+
+            pairs = dict(
+                (k, v.strip('"'))
+                for k, v in PAIR_RE.findall(stripped))
+            time = pairs.pop("time", None)
+            event_type = pairs.pop("type", None)
+            package = pairs.pop("package", None)
+            reason = pairs.pop("reason", None)
+            extra_data = pairs
+
+            data_list.append((time, event_type, package, extra_data, reason))
+    data_headers = (('Time', 'datetime'), 'Event Type', 'Package', 'Event', 'Reason')
+
+    return data_headers, data_list, source_path
 
 # App Ops
 @artifact_processor
