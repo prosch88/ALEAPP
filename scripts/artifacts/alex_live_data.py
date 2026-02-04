@@ -41,7 +41,7 @@ __artifacts_v2__ = {
         "notes": "",
         "paths": ('*/extra/dumpsys_*.txt'),
         "output_types": ["html", "lava", "tsv"],
-        "artifact_icon": "list"
+        "artifact_icon": "activity"
     }
 }
 
