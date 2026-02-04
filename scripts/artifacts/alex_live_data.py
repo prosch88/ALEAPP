@@ -75,6 +75,7 @@ _DEVICE_TIME = 0
 def parse_timestamp(s, device_ts):
     if not s or not isinstance(s, str):
         return None
+    s = s.strip()
     # ISO format: 2026-02-02T05:37:49.732
     try:
         dt = datetime.datetime.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")
@@ -101,14 +102,14 @@ def parse_timestamp(s, device_ts):
         return None
     try:
         device_dt = datetime.datetime.fromtimestamp(device_ts, tz=datetime.timezone.utc)
-        if len(s) < 5 or s[2] != '-' or s[5] != ' ':
+        if len(s) < 6 or s[2] != '-' or s[5] != ' ':
             return None
         month = int(s[0:2])
         day = int(s[3:5])
         year = device_dt.year
         if (month, day) > (device_dt.month, device_dt.day):
             year -= 1
-        full_ts = f"{year}-{s}"
+        full_ts = f"{year}-{month:02d}-{day:02d}{s[5:]}"
         dt = datetime.datetime.strptime(full_ts, "%Y-%m-%d %H:%M:%S.%f")
         dt = dt.replace(tzinfo=datetime.timezone.utc)
         return int(dt.timestamp())
@@ -274,9 +275,17 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
                 if creation_millis:
                     create_time = datetime.datetime.fromtimestamp(int(creation_millis)//1000, tz=datetime.timezone.utc)
                 elif creation_time and creation_time != None:
-                    create_time = datetime.datetime.fromtimestamp(parse_timestamp(creation_time, _DEVICE_TIME), tz=datetime.timezone.utc)
+                    c_time = parse_timestamp(creation_time, _DEVICE_TIME)
+                    if c_time:
+                        create_time = datetime.datetime.fromtimestamp(c_time, tz=datetime.timezone.utc)
+                    else:
+                        create_time = creation_time
                 if last_connected:
-                    last_connected_time = datetime.datetime.fromtimestamp(parse_timestamp(last_connected, _DEVICE_TIME), tz=datetime.timezone.utc)
+                    if last_connected:
+                        l_time = parse_timestamp(last_connected, _DEVICE_TIME)
+                        last_connected_time = datetime.datetime.fromtimestamp(l_time, tz=datetime.timezone.utc)
+                    else:
+                        last_connected_time = last_connected
 
         if current_key is not None:
             data_list.append((net_id, create_time, last_connected_time, ssid,
