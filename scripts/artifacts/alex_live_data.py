@@ -42,6 +42,21 @@ __artifacts_v2__ = {
         "paths": ('*/extra/dumpsys_*.txt'),
         "output_types": ["html", "lava", "tsv"],
         "artifact_icon": "activity"
+    },
+    "alex_live_usagestats_yearly": {
+        "name": "Dumpsys - Usagestats (yearly)",
+        "description": "Outputs the Usagestats \
+            (yearly) entries from the Dumpsys \
+                log of an ALEX PRFS backup.",
+        "author": "@C_Peter",
+        "creation_date": "2026-02-04",
+        "last_update_date": "2026-02-04",
+        "requirements": "none",
+        "category": "ALEX Live Data",
+        "notes": "",
+        "paths": ('*/extra/dumpsys_*.txt'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "bar-chart-2"
     }
 }
 
@@ -65,8 +80,22 @@ def parse_timestamp(s, device_ts):
         dt = datetime.datetime.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")
         dt = dt.replace(tzinfo=datetime.timezone.utc)
         return int(dt.timestamp())
-    except (ValueError, IndexError):
+    except (ValueError, IndexError, TypeError):
         pass
+    # Dumpsys format: 2026-02-02 12:11:46
+    try:
+        dt = datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return int(dt.timestamp())
+    except (ValueError, IndexError, TypeError):
+        pass
+    # German formats
+    for fmt in ("%d.%m.%Y, %H:%M", "%d.%m.%Y %H:%M"):
+        try:
+            dt = datetime.datetime.strptime(s, fmt)
+            return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp())
+        except (ValueError, IndexError, TypeError):
+            pass
     # Short format: 07-21 03:37:00.040
     if device_ts is None:
         return None
@@ -281,15 +310,78 @@ def alex_live_usagestats_events(files_found, _report_folder, _seeker, _wrap_text
                 (k, v.strip('"'))
                 for k, v in PAIR_RE.findall(stripped))
             time = pairs.pop("time", None)
+            timestamp = parse_timestamp(time, _DEVICE_TIME)
+            if timestamp:
+                out_time = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
+            else:
+                out_time = time
             event_type = pairs.pop("type", None)
             package = pairs.pop("package", None)
             reason = pairs.pop("reason", None)
             extra_data = pairs
 
-            data_list.append((time, event_type, package, extra_data, reason))
+            data_list.append((out_time, event_type, package, extra_data, reason))
     data_headers = (('Time', 'datetime'), 'Event Type', 'Package', 'Event', 'Reason')
 
     return data_headers, data_list, source_path
+
+# Dumpsys - Usagestats - Packages (yearly)
+@artifact_processor
+def alex_live_usagestats_yearly(files_found, _report_folder, _seeker, _wrap_text):
+    global _PARSED_DUMPSYS, _DUMPSYS_DICT, _DEVICE_TIME
+    source_path = files_found[0]
+    data_list = []
+    data_headers = []
+    ordered_keys = None
+    split_dumpsys_log(source_path)
+    us_dump, us_ts = _DUMPSYS_DICT.get("usagestats", (None, None))
+    if us_dump == None:
+        logfunc('Dumpsys does not include a \"usagestats\" part.')
+    else:
+        us_yearly = us_dump.split("In-memory yearly stats")[1]
+        PAIR_RE = re.compile(r'(\w+)=(".*?"|\S+)')
+        data_list = []
+
+        for line in us_yearly.splitlines():
+            stripped = line.strip()
+            
+            if not stripped.startswith("package=") or "lastTime" not in stripped:
+                continue
+
+            pairs = dict(
+                (k, v.strip('"'))
+                for k, v in PAIR_RE.findall(stripped))
+
+            if ordered_keys is None:
+                ordered_keys = list(pairs.keys())
+                for key in ordered_keys:
+                    value = pairs[key]
+                    if key == "package":
+                        data_headers.append("Package")
+                    else:
+                        timestamp = parse_timestamp(value, _DEVICE_TIME)
+                        if timestamp is None:
+                            data_headers.append(key)
+                        else:
+                            data_headers.append((key, "datetime"))
+
+            row_values = []
+            for key in ordered_keys:
+                value = pairs[key]
+                if key == "package":
+                    row_values.append(value)
+                else:
+                    timestamp = parse_timestamp(value, _DEVICE_TIME)
+                    if timestamp is None:
+                        row_values.append(value)
+                    else:
+                        out_time = datetime.datetime.fromtimestamp(
+                            timestamp, tz=datetime.timezone.utc)
+                        row_values.append(out_time)
+
+            data_list.append(tuple(row_values))
+
+        return tuple(data_headers), data_list, source_path
 
 # App Ops
 @artifact_processor
