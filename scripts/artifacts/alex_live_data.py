@@ -274,7 +274,7 @@ def alex_live_usagestats_events(files_found, _report_folder, _seeker, _wrap_text
         for line in us_dump.splitlines():
             stripped = line.strip()
 
-            if not stripped.startswith("time=") or "flags=" not in stripped:
+            if not stripped.startswith("time=") or "type=" not in stripped or "package=" not in stripped:
                 continue
 
             pairs = dict(
