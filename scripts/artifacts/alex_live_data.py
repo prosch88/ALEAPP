@@ -57,6 +57,24 @@ __artifacts_v2__ = {
         "paths": ('*/extra/dumpsys_*.txt'),
         "output_types": ["html", "lava", "tsv"],
         "artifact_icon": "bar-chart-2"
+    },
+    "alex_live_bt_bonded": {
+        "name": "Dumpsys - BTM Bonded Devices",
+        "description": "Outputs the Bonded \
+            Bluetooth devices from the Dumpsys \
+                log of an ALEX PRFS backup. \
+                    Usually only included if \
+                        Bluetooth was active \
+                            during backup.",
+        "author": "@C_Peter",
+        "creation_date": "2026-02-05",
+        "last_update_date": "2026-02-05",
+        "requirements": "none",
+        "category": "ALEX Live Data",
+        "notes": "",
+        "paths": ('*/extra/dumpsys_*.txt'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "bluetooth"
     }
 }
 
@@ -391,6 +409,48 @@ def alex_live_usagestats_yearly(files_found, _report_folder, _seeker, _wrap_text
             data_list.append(tuple(row_values))
 
         return tuple(data_headers), data_list, source_path
+
+# Dumpsys - Bluetooth Manager - Bonded Devices
+@artifact_processor
+def alex_live_bt_bonded(files_found, _report_folder, _seeker, _wrap_text):
+    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+    source_path = files_found[0]
+    data_list = []
+    split_dumpsys_log(source_path)
+    btm_dump, btm_ts = _DUMPSYS_DICT.get("bluetooth_manager", (None, None))
+    if btm_dump == None:
+        logfunc('Dumpsys does not include a \"bluetooth_manager\" part.')
+    else:
+        device_pattern = re.compile(r'''
+            ^\s*
+            ([0-9A-FX]{2}(?::[0-9A-FX]{2}){5})
+            .*?
+            (?<!\[)
+            (\b[^\[\]\n]+\b)
+            \s*$
+        ''', re.VERBOSE)
+        data_list = []
+        in_bonded = False
+        for line in btm_dump.splitlines():
+            stripped = line.strip()
+            if "Bonded devices:" in line:
+                in_bonded = True
+                continue
+
+            if in_bonded:
+                if line.strip() == "":
+                    break
+
+                m = device_pattern.match(line)
+                if m:
+                    mac, name = m.groups()
+                    if name:
+                        data_list.append((mac, name.strip()))
+                else:
+                    continue
+        data_headers = ('MAC', "Name")
+
+    return data_headers, data_list, source_path
 
 # App Ops
 @artifact_processor
