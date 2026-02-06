@@ -75,6 +75,21 @@ __artifacts_v2__ = {
         "paths": ('*/extra/dumpsys_*.txt'),
         "output_types": ["html", "lava", "tsv"],
         "artifact_icon": "bluetooth"
+    },
+    "alex_live_companiondevice": {
+        "name": "Dumpsys - Companiondevice",
+        "description": "Outputs the associated \
+            Companion devices from the Dumpsys \
+                log of an ALEX PRFS backup.",
+        "author": "@C_Peter",
+        "creation_date": "2026-02-06",
+        "last_update_date": "2026-02-06",
+        "requirements": "none",
+        "category": "ALEX Live Data",
+        "notes": "",
+        "paths": ('*/extra/dumpsys_*.txt'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "bluetooth"
     }
 }
 
@@ -117,20 +132,37 @@ def parse_timestamp(s, device_ts):
             pass
     # Short format: 07-21 03:37:00.040
     if device_ts is None:
-        return None
+        pass
     try:
         device_dt = datetime.datetime.fromtimestamp(device_ts, tz=datetime.timezone.utc)
         if len(s) < 6 or s[2] != '-' or s[5] != ' ':
-            return None
-        month = int(s[0:2])
-        day = int(s[3:5])
-        year = device_dt.year
-        if (month, day) > (device_dt.month, device_dt.day):
-            year -= 1
-        full_ts = f"{year}-{month:02d}-{day:02d}{s[5:]}"
-        dt = datetime.datetime.strptime(full_ts, "%Y-%m-%d %H:%M:%S.%f")
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
-        return int(dt.timestamp())
+            pass
+        else:
+            month = int(s[0:2])
+            day = int(s[3:5])
+            year = device_dt.year
+            if (month, day) > (device_dt.month, device_dt.day):
+                year -= 1
+            full_ts = f"{year}-{month:02d}-{day:02d}{s[5:]}"
+            dt = datetime.datetime.strptime(full_ts, "%Y-%m-%d %H:%M:%S.%f")
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return int(dt.timestamp())
+    except (ValueError, IndexError, TypeError):
+        return None
+    # Short format: date only MM-DD
+    try:
+        device_dt = datetime.datetime.fromtimestamp(device_ts, tz=datetime.timezone.utc)
+        if len(s) == 5 and s[2] == '-':
+            month = int(s[0:2])
+            day = int(s[3:5])
+            year = device_dt.year
+            if (month, day) > (device_dt.month, device_dt.day):
+                year -= 1
+            # assume start of day
+            full_ts = f"{year}-{month:02d}-{day:02d} 00:00:00.000"
+            dt = datetime.datetime.strptime(full_ts, "%Y-%m-%d %H:%M:%S.%f")
+            return int(dt.replace(tzinfo=datetime.timezone.utc).timestamp())
+
     except (ValueError, IndexError, TypeError):
         return None
 
@@ -299,8 +331,8 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
                     else:
                         create_time = creation_time
                 if last_connected:
-                    if last_connected:
-                        l_time = parse_timestamp(last_connected, _DEVICE_TIME)
+                    l_time = parse_timestamp(last_connected, _DEVICE_TIME)
+                    if l_time:
                         last_connected_time = datetime.datetime.fromtimestamp(l_time, tz=datetime.timezone.utc)
                     else:
                         last_connected_time = last_connected
@@ -449,6 +481,53 @@ def alex_live_bt_bonded(files_found, _report_folder, _seeker, _wrap_text):
                 else:
                     continue
         data_headers = ('MAC', "Name")
+
+    return data_headers, data_list, source_path
+
+# Dumpsys - Companiondevice
+@artifact_processor
+def alex_live_companiondevice(files_found, _report_folder, _seeker, _wrap_text):
+    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+
+    source_path = files_found[0]
+    data_list = []
+    data_headers = []
+
+    split_dumpsys_log(source_path)
+    cmpd_dump, btm_ts = _DUMPSYS_DICT.get("companiondevice", (None, None))
+
+    if cmpd_dump is None:
+        logfunc('Dumpsys does not include a "companiondevice" part.')
+        return data_headers, data_list, source_path
+
+    FIELD_SPLIT_RE = re.compile(r", (?=\w+=)")
+    for line in cmpd_dump.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("Association{"):
+            continue
+
+        content = stripped[stripped.find("{") + 1 : stripped.rfind("}")]
+        fields = FIELD_SPLIT_RE.split(content)
+
+        assoc = {}
+        for field in fields:
+            if "=" not in field:
+                continue
+
+            key, value = field.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+            if value in ("null", "None"):
+                value = None
+            assoc[key] = value
+
+        if not data_headers:
+            data_headers = list(assoc.keys())
+
+        row = tuple(assoc.get(key) for key in data_headers)
+        data_list.append(row)
 
     return data_headers, data_list, source_path
 
