@@ -90,6 +90,21 @@ __artifacts_v2__ = {
         "paths": ('*/extra/dumpsys_*.txt'),
         "output_types": ["html", "lava", "tsv"],
         "artifact_icon": "watch"
+    },
+    "alex_live_role": {
+        "name": "Dumpsys - Role (Default Apps)",
+        "description": "Outputs the Default \
+            Apps from the Dumpsys \
+                log of an ALEX PRFS backup.",
+        "author": "@C_Peter",
+        "creation_date": "2026-02-06",
+        "last_update_date": "2026-02-06",
+        "requirements": "none",
+        "category": "ALEX Live Data",
+        "notes": "",
+        "paths": ('*/extra/dumpsys_*.txt'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "check-circle"
     }
 }
 
@@ -530,6 +545,37 @@ def alex_live_companiondevice(files_found, _report_folder, _seeker, _wrap_text):
         data_list.append(row)
 
     return data_headers, data_list, source_path
+
+# Dumpsys - Role (Default Apps)
+@artifact_processor
+def alex_live_role(files_found, _report_folder, _seeker, _wrap_text):
+    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+    source_path = files_found[0]
+    data_list = []
+    split_dumpsys_log(source_path)
+    role_dump, role_ts = _DUMPSYS_DICT.get("role", (None, None))
+    
+    if role_dump is None:
+        logfunc('Dumpsys does not include a "role" part.')
+    else:
+        user_blocks = re.findall(r"user_states=\{(.*?)\n\}", role_dump, re.DOTALL)
+        
+        for block in user_blocks:
+            user_id_match = re.search(r"user_id=(\d+)", block)
+            uid = int(user_id_match.group(1)) if user_id_match else None
+            roles_match = re.search(r"roles=\[(.*)\]", block, re.DOTALL)
+            roles_block = roles_match.group(1) if roles_match else ""
+            role_entries = re.findall(r"\{(.*?)\}", roles_block, re.DOTALL)
+            for entry in role_entries:
+                name_match = re.search(r"name=([^\n]+)", entry)
+                name = name_match.group(1).strip() if name_match else None
+                holders_match = re.search(r"holders=([^\n]+)", entry)
+                holders = holders_match.group(1).strip() if holders_match else None
+                data_list.append((name, holders, uid))
+    
+    data_headers = ('Name', 'Holders', 'User')
+    return data_headers, data_list, source_path
+
 
 # App Ops
 @artifact_processor
