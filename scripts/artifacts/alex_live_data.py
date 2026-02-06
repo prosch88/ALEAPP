@@ -105,6 +105,21 @@ __artifacts_v2__ = {
         "paths": ('*/extra/dumpsys_*.txt'),
         "output_types": ["html", "lava", "tsv"],
         "artifact_icon": "check-circle"
+    },
+    "alex_live_account": {
+        "name": "Dumpsys - Accounts",
+        "description": "Outputs the Accounts \
+            from the Dumpsys log of an \
+                ALEX PRFS backup.",
+        "author": "@C_Peter",
+        "creation_date": "2026-02-06",
+        "last_update_date": "2026-02-06",
+        "requirements": "none",
+        "category": "ALEX Live Data",
+        "notes": "",
+        "paths": ('*/extra/dumpsys_*.txt'),
+        "output_types": ["html", "lava", "tsv"],
+        "artifact_icon": "user"
     }
 }
 
@@ -574,6 +589,29 @@ def alex_live_role(files_found, _report_folder, _seeker, _wrap_text):
                 data_list.append((name, holders, uid))
     
     data_headers = ('Name', 'Holders', 'User')
+    return data_headers, data_list, source_path
+
+# Dumpsys - Accounts
+@artifact_processor
+def alex_live_account(files_found, _report_folder, _seeker, _wrap_text):
+    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+    source_path = files_found[0]
+    data_list = []
+    split_dumpsys_log(source_path)
+    acc_dump, acc_ts = _DUMPSYS_DICT.get("account", (None, None))
+    
+    if acc_dump is None:
+        logfunc('Dumpsys does not include an "account" part.')
+    else:
+        acc_pattern = re.compile(
+                r'Account\s*\{\s*name=([^,}]+)\s*,\s*type=([^}]+)\s*\}'
+            )
+        for line in acc_dump.splitlines():
+            m = acc_pattern.search(line)
+            if m:
+                data_list.append((m.group(2), m.group(1)))
+
+    data_headers = ('Type', 'Name')
     return data_headers, data_list, source_path
 
 
