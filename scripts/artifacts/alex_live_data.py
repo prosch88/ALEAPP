@@ -573,12 +573,12 @@ def alex_live_role(files_found, _report_folder, _seeker, _wrap_text):
     data_list = []
     split_dumpsys_log(source_path)
     role_dump, role_ts = _DUMPSYS_DICT.get("role", (None, None))
-    
+   
     if role_dump is None:
         logfunc('Dumpsys does not include a "role" part.')
     else:
         user_blocks = re.findall(r"user_states=\{(.*?)\n\}", role_dump, re.DOTALL)
-        
+       
         for block in user_blocks:
             user_id_match = re.search(r"user_id=(\d+)", block)
             uid = int(user_id_match.group(1)) if user_id_match else None
@@ -591,7 +591,7 @@ def alex_live_role(files_found, _report_folder, _seeker, _wrap_text):
                 holders_match = re.search(r"holders=([^\n]+)", entry)
                 holders = holders_match.group(1).strip() if holders_match else None
                 data_list.append((name, holders, uid))
-    
+   
     data_headers = ('Name', 'Holders', 'User')
     return data_headers, data_list, source_path
 
@@ -603,7 +603,7 @@ def alex_live_account(files_found, _report_folder, _seeker, _wrap_text):
     data_list = []
     split_dumpsys_log(source_path)
     acc_dump, acc_ts = _DUMPSYS_DICT.get("account", (None, None))
-    
+   
     if acc_dump is None:
         logfunc('Dumpsys does not include an "account" part.')
     else:
@@ -625,7 +625,6 @@ def alex_live_appops(files_found, _report_folder, _seeker, _wrap_text):
     """Parses the app_ops.json included in an ALEX PRFS Backup"""
     source_path = get_file_path(files_found, "app_ops.json")
     data_list = []
-    
     try:
         with open(source_path, "r", encoding="utf-8") as app_ops_file:
             app_ops_data = json.load(app_ops_file)
