@@ -136,6 +136,7 @@ _DEVICE_TIME = 0
 
 # Timestamp Helper - Converts to UNIX Timestamp
 def parse_timestamp(s, device_ts):
+    """Function reading string-times and converts them to unix-timestamps"""
     if not s or not isinstance(s, str):
         return None
     s = s.strip()
@@ -198,6 +199,7 @@ def parse_timestamp(s, device_ts):
 
 # Helper to split the Dumpsys Output
 def split_dumpsys_log(dumpsys_file) -> dict:
+    """Function to split the dumpsys txt file in service parts"""
     global _PARSED_DUMPSYS, _DUMPSYS_DICT, _DEVICE_TIME
     if _PARSED_DUMPSYS:
         return
@@ -262,12 +264,12 @@ def split_dumpsys_log(dumpsys_file) -> dict:
 # Dumpsys - Wifi - Configured Networks
 @artifact_processor
 def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
-    global _PARSED_DUMPSYS, _DUMPSYS_DICT, _DEVICE_TIME
+    """Parses the dumpsys wifi dump for configured networks"""
     source_path = files_found[0]
     data_list = []
     split_dumpsys_log(source_path)
     wifi_dump, wifi_ts = _DUMPSYS_DICT.get("wifi", (None, None))
-    if wifi_dump == None:
+    if wifi_dump is None:
         logfunc('Dumpsys does not include a \"wifi\" part.')
     else:
         ID_RE = re.compile(r'^\s*[*-]?\s*(DSBLE ID|ID):\s*(\d+)')
@@ -284,9 +286,13 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
         }
 
         in_section = False
-        current = None
         current_key = None
-        blank_count = 0
+        net_id = None
+        dsble = None
+        ssid = bssid = hidden = None
+        creation_millis = creation_time = None
+        randomized_mac = last_connected = autojoin = None
+        create_time = last_connected_time = None
 
         for line in wifi_dump.splitlines():
             stripped = line.strip()
@@ -349,12 +355,10 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
                                 randomized_mac = value
                             elif key == "last_connected":
                                 last_connected = value
-                            elif key == "autojoin":
-                                autojoin = value
 
                 if creation_millis:
                     create_time = datetime.datetime.fromtimestamp(int(creation_millis)//1000, tz=datetime.timezone.utc)
-                elif creation_time and creation_time != None:
+                elif creation_time and creation_time is not None:
                     c_time = parse_timestamp(creation_time, _DEVICE_TIME)
                     if c_time:
                         create_time = datetime.datetime.fromtimestamp(c_time, tz=datetime.timezone.utc)
@@ -378,12 +382,12 @@ def alex_live_wifi_conf_net(files_found, _report_folder, _seeker, _wrap_text):
 # Dumpsys - Usagestats - Events
 @artifact_processor
 def alex_live_usagestats_events(files_found, _report_folder, _seeker, _wrap_text):
-    global _PARSED_DUMPSYS, _DUMPSYS_DICT, _DEVICE_TIME
+    """Parses the dumpsys usagestats dump for event logs"""
     source_path = files_found[0]
     data_list = []
     split_dumpsys_log(source_path)
     us_dump, us_ts = _DUMPSYS_DICT.get("usagestats", (None, None))
-    if us_dump == None:
+    if us_dump is None:
         logfunc('Dumpsys does not include a \"usagestats\" part.')
     else:
         PAIR_RE = re.compile(r'(\w+)=(".*?"|\S+)')
@@ -417,14 +421,14 @@ def alex_live_usagestats_events(files_found, _report_folder, _seeker, _wrap_text
 # Dumpsys - Usagestats - Packages (yearly)
 @artifact_processor
 def alex_live_usagestats_yearly(files_found, _report_folder, _seeker, _wrap_text):
-    global _PARSED_DUMPSYS, _DUMPSYS_DICT, _DEVICE_TIME
+    """Parses the dumpsys usagestats dump for event logs"""
     source_path = files_found[0]
     data_list = []
     data_headers = []
     ordered_keys = None
     split_dumpsys_log(source_path)
     us_dump, us_ts = _DUMPSYS_DICT.get("usagestats", (None, None))
-    if us_dump == None:
+    if us_dump is None:
         logfunc('Dumpsys does not include a \"usagestats\" part.')
     else:
         us_yearly = us_dump.split("In-memory yearly stats")[1]
@@ -475,12 +479,12 @@ def alex_live_usagestats_yearly(files_found, _report_folder, _seeker, _wrap_text
 # Dumpsys - Bluetooth Manager - Bonded Devices
 @artifact_processor
 def alex_live_bt_bonded(files_found, _report_folder, _seeker, _wrap_text):
-    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+    """Parses the dumpsys bluetooth_manager dump for bonded devices"""
     source_path = files_found[0]
     data_list = []
     split_dumpsys_log(source_path)
     btm_dump, btm_ts = _DUMPSYS_DICT.get("bluetooth_manager", (None, None))
-    if btm_dump == None:
+    if btm_dump is None:
         logfunc('Dumpsys does not include a \"bluetooth_manager\" part.')
     else:
         device_pattern = re.compile(r'''
@@ -517,7 +521,7 @@ def alex_live_bt_bonded(files_found, _report_folder, _seeker, _wrap_text):
 # Dumpsys - Companiondevice
 @artifact_processor
 def alex_live_companiondevice(files_found, _report_folder, _seeker, _wrap_text):
-    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+    """Parses the dumpsys companiondevice dump for entries"""
 
     source_path = files_found[0]
     data_list = []
@@ -564,7 +568,7 @@ def alex_live_companiondevice(files_found, _report_folder, _seeker, _wrap_text):
 # Dumpsys - Role (Default Apps)
 @artifact_processor
 def alex_live_role(files_found, _report_folder, _seeker, _wrap_text):
-    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+    """Parses the dumpsys role dump for entries"""
     source_path = files_found[0]
     data_list = []
     split_dumpsys_log(source_path)
@@ -594,7 +598,7 @@ def alex_live_role(files_found, _report_folder, _seeker, _wrap_text):
 # Dumpsys - Accounts
 @artifact_processor
 def alex_live_account(files_found, _report_folder, _seeker, _wrap_text):
-    global _PARSED_DUMPSYS, _DUMPSYS_DICT
+    """Parses the dumpsys account dump for entires"""
     source_path = files_found[0]
     data_list = []
     split_dumpsys_log(source_path)
@@ -618,6 +622,7 @@ def alex_live_account(files_found, _report_folder, _seeker, _wrap_text):
 # App Ops
 @artifact_processor
 def alex_live_appops(files_found, _report_folder, _seeker, _wrap_text):
+    """Parses the app_ops.json included in an ALEX PRFS Backup"""
     source_path = get_file_path(files_found, "app_ops.json")
     data_list = []
     
