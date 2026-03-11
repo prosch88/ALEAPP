@@ -1,14 +1,39 @@
-import sqlite3
+# Updated to artifacts_v2 by @C_Peter
+
+__artifacts_v2__ = {
+    "get_calllog": {
+        "name": "Call Logs",
+        "description": "Call History from calllog.db",
+        "author": "@AlexisBrignoni",
+        "creation_date": "2020-03-02",
+        "last_update_date": "2026-03-10",
+        "requirements": "none",
+        "category": "Call Logs",
+        "notes": "",
+        "paths": ('*/com.android.providers.contacts/databases/calllog.db*',
+            '*/com.samsung.android.providers.contacts/databases/calllog.db*'),
+        "output_types": ["lava", "tsv"],
+        "artifact_icon": "phone"
+    }
+}
 
 from scripts.artifact_report import ArtifactHtmlReport
-from scripts.ilapfuncs import logfunc, tsv, timeline, open_sqlite_db_readonly
+from scripts.ilapfuncs import artifact_processor, \
+    logfunc, open_sqlite_db_readonly
 
-def get_calllog(files_found, report_folder, seeker, wrap_text):
-    
+def flatten_headers(headers):
+    return [h[0] if isinstance(h, tuple) else h for h in headers]
+
+@artifact_processor
+def get_calllog(files_found, _report_folder, _seeker, _wrap_text):
+    """Parses the call history from calllog.db"""
     data_list = []
+    html_list = []
+    source_files = []
     
     for file_found in files_found:
         file_found = str(file_found)
+        source_files.append(file_found)
         
         if file_found.endswith('calllog.db'):
             db = open_sqlite_db_readonly(file_found)
@@ -70,29 +95,22 @@ def get_calllog(files_found, report_folder, seeker, wrap_text):
                     else:
                         call_type_html = call_type
 
-                    data_list.append((row[0], row[1], row[2], call_type_html, str(row[4]), row[5], row[6], row[7], row[8], row[9], str(row[10]), file_found))
+                    data_list.append((row[0], row[1], row[2], row[3], str(row[4]), row[5], row[6], row[7], row[8], row[9], str(row[10]), file_found))
+                    html_list.append((row[0], row[1], row[2], call_type_html, str(row[4]), row[5], row[6], row[7], row[8], row[9], str(row[10]), file_found))
             db.close()
             
     if data_list:
+        source_files = ",".join(source_files)
         report = ArtifactHtmlReport('Call logs')
-        report.start_artifact_report(report_folder, 'Call logs')
+        report.start_artifact_report(_report_folder, 'Call logs')
         report.add_script()
-        data_headers = ('Call Date', 'Phone Account Address', 'Partner', 'Type','Duration in Secs','Partner Location','Country ISO','Data','Mime Type','Transcription','Deleted','Source File')
-        
-        report.write_artifact_data_table(data_headers, data_list, file_found, html_escape=False)
+        data_headers = (('Call Date', 'datetime'), 'Phone Account Address', 'Partner', 'Type','Duration in Secs', 'Partner Location', \
+            'Country ISO', 'Data', 'Mime Type', 'Transcription', 'Deleted', 'Source File')
+
+        report.write_artifact_data_table(flatten_headers(data_headers), html_list, file_found, html_escape=False)
         report.end_artifact_report()
-        
-        tsvname = f'Call Logs'
-        tsv(report_folder, data_headers, data_list, tsvname)
-        
-        tlactivity = 'Call Logs'
-        timeline(report_folder, tlactivity, data_list, data_headers)
+
+        return data_headers, data_list, source_files
+
     else:
         logfunc('No Call Log data available')
-
-__artifacts__ = {
-        "Call logs ": (
-                "Call Logs",
-                ('*/com.android.providers.contacts/databases/calllog.db*','*/com.samsung.android.providers.contacts/databases/calllog.db*'),
-                get_calllog)
-}
